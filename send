@@ -1,0 +1,21 @@
+#!/bin/bash
+
+# Check for minimum required arguments (destination + at least one file)
+if [ "$#" -lt 2 ]; then
+    echo "Usage: $0 <destination-host> <file-or-directory1> [file-or-directory2 ...]"
+    exit 1
+fi
+
+# Extract the destination host (first argument)
+DEST_HOST="$1"
+shift
+
+# The remaining arguments are the files or directories to send
+FILES_TO_SEND="$@"
+
+# Replicate the user's legacy workflow safely over encrypted SSH:
+# - Pack files locally to stdout (-) 
+# - Stream via SSH to the target through the jump boxes
+# - Unpack immediately on the destination server
+tar -cvf - $FILES_TO_SEND | ssh "$DEST_HOST" "tar -xvf -"
+
