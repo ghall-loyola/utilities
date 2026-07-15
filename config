@@ -1,0 +1,149 @@
+# ================================
+# INCLUDES
+# ================================
+# If you have other ssh config files to include, do them here, like so:
+#Include "/Users/ghall/Library/Application Support/NVIDIA/Sync/config/ssh_config"
+
+
+# =======================
+# Jumphost configuration
+# =======================
+# If you need additional jump hosts you can set them up here:
+#Host jumphost
+#    HostName hostname.domain.tld
+#    User username
+
+# ========================
+# Port forwards
+# ========================
+# Some examples of local forwards
+
+# DGX Spark configuration using the jumphost
+#Host dgx-spark
+#    HostName sparkhost.domain.tld
+#    User username
+#    ProxyJump jumphost
+#    # Port for NVIDIA Sync (maps local 2222 to Spark's SSH 22)
+#    LocalForward 2222 localhost:22
+#    # Port for DGX Dashboard
+#    LocalForward 11000 localhost:11000
+#    # Port for JupyterLab (optional - change to your assigned port)
+#    LocalForward 8888 localhost:8888
+
+# Connect to a private website like for development
+#Host website
+#        Hostname private.webhost.domain.tld
+#        User username
+#        ProxyJump jumphost
+#        LocalForward 8080 localhost:80
+#        LocalForward 8443 localhost:443
+
+# Connect to a windows box via RDP
+#Host jump_box
+#    Hostname jumphost.domain.tld
+# Windows 11 RDP
+#    LocalForward 13389 windows.box.domain.tld:3389
+
+# ====================================
+# Loyola specific connection info for "automatically" connecting to host.linuxlab.cs.loyola.edu
+# from wherever via ssh using one of the three jumphosts, moria, erebor, and rivendell by
+# ONLY TYPING THE SHORT NAME on your local terminal! YAY!
+# If you have ssh keys (id_rsa.pub or similar) set up in your home, it will use that.
+# Otherwise you will get prompted for passwords, once for the jump host and again for the box 
+# you are ultimately trying to reach (like thorin, balin, etc)
+# ====================================
+
+# ====================================================================
+# PHASE 0: SELF-HEALING ENVIRONMENT SETUP (Runs instantly on launch)
+# ====================================================================
+# This runs a silent local background script. If the sockets directory 
+# does not exist, it creates it and sets secure file permissions.
+# The 'exec "false"' ensures this block never accidentally matches a host condition.
+Match host * exec "mkdir -p ~/.ssh/sockets && chmod 700 ~/.ssh/sockets && false"
+
+
+# ====================================================================
+# PHASE 1: CONNECTION MULTIPLEXING (Speed Booster)
+# ====================================================================
+# Shares active background sockets. The first connection takes a second, 
+# but all subsequent actions or file-transfer scripts engage instantly.
+# This actually makes a huge difference in connecting to multiple boxes.
+# If you use ssh -v and it gets stuck giving you debug info you don't want
+# you may need to kill the offending ssh process and rm -rf ~/.ssh/sockets.
+# The keepalive should help with idle connections freezing. It's a problem
+# for me with FiOS and sometimes Loyola's firewall.
+Host *
+    ControlMaster auto
+    ControlPath ~/.ssh/sockets/%r@%h-%p
+    ControlPersist 600
+
+    # KEEPALIVE SECONDS: Send a tiny cryptographic heartbeat packet every 30 seconds
+    ServerAliveInterval 30
+    # KEEPALIVE MAX ATTEMPTS: If 3 heartbeats in a row fail, drop the connection cleanly
+    ServerAliveCountMax 3
+    # OS-LEVEL KEEPALIVE: Keep the TCP socket open at the kernel level
+    TCPKeepAlive yes
+
+
+# ====================================================================
+# PHASE 2: INDIVIDUAL JUMP HOST IDENTITIES & FAILOVER PIPELINE
+# ====================================================================
+# Timeouts here are for the first time you log in for a given session
+
+Host moria moria.cs.loyola.edu
+    HostName moria.cs.loyola.edu
+    ForwardAgent yes
+    IdentityFile ~/.ssh/id_rsa
+    CanonicalizeHostname no
+    ConnectTimeout 10
+    # FIX: Prevents debug info (-vvv) from getting locked into the master background socket
+    ControlMaster no
+
+Host rivendell rivendell.cs.loyola.edu
+    HostName rivendell.cs.loyola.edu
+    ForwardAgent yes
+    IdentityFile ~/.ssh/id_rsa
+    CanonicalizeHostname no
+    ConnectTimeout 10
+    # FIX: Prevents debug info (-vvv) from getting locked into the master background socket
+    ControlMaster no
+
+Host erebor erebor.cs.loyola.edu
+    HostName erebor.cs.loyola.edu
+    ForwardAgent yes
+    IdentityFile ~/.ssh/id_rsa
+    CanonicalizeHostname no
+    ConnectTimeout 10
+    # FIX: Prevents debug info (-vvv) from getting locked into the master background socket
+    ControlMaster no
+
+# ====================================================================
+# PHASE 3: EXPLICIT NICKNAMES / SHORT ALIASES
+# ====================================================================
+# if you have other pet names for machines you can add them here, but note 
+# you will also need to add them below in phase 5 as well.
+Host sb
+    HostName spongebob.cs.loyola.edu
+
+
+# ====================================================================
+# PHASE 4: SEARCH DOMAIN ENGINE (Resolves 'lupin' -> 'lupin.cs.loyola.edu')
+# ====================================================================
+# This should not mess with local DNS names if you use them, unless you 
+# name all the machines the same thing and are a monster.
+Host *
+    CanonicalizeHostname yes
+    CanonicalDomains cs.loyola.edu
+    CanonicalizeFallbackLocal yes
+    CanonicalizeMaxDots 0
+
+
+# ====================================================================
+# PHASE 5: THE FINAL PIPELINE (TRUE SERIAL PROXYJUMP BACKUPS)
+# ====================================================================
+# Explicit exclusions on the jump host names prevent recursive routing loops.
+# IF YOU ADDED pet names in PHASE3 THEN ADD THEM HERE TOO!
+Host 144.126.12.* 10.248.5.* sb *.cs.loyola.edu *.linuxlab.cs.loyola.edu !moria !rivendell !erebor !moria.cs.loyola.edu !rivendell.cs.loyola.edu !erebor.cs.loyola.edu
+    IdentityFile ~/.ssh/id_rsa
+    ProxyCommand ssh moria.cs.loyola.edu -W %h:%p 2>/dev/null || ssh rivendell.cs.loyola.edu -W %h:%p 2>/dev/null || ssh erebor.cs.loyola.edu -W %h:%p
+    # The Proxy Command does the actual failover for logging in. If moria is down, it will fry rivendell, etc.
