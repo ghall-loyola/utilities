@@ -145,5 +145,7 @@ Host *
 # IF YOU ADDED pet names in PHASE3 THEN ADD THEM HERE TOO!
 Host 144.126.12.* 10.248.5.* sb *.cs.loyola.edu *.linuxlab.cs.loyola.edu !moria !rivendell !erebor !moria.cs.loyola.edu !rivendell.cs.loyola.edu !erebor.cs.loyola.edu
     IdentityFile ~/.ssh/id_rsa
-    ProxyCommand ssh moria.cs.loyola.edu -W %h:%p 2>/dev/null || ssh rivendell.cs.loyola.edu -W %h:%p 2>/dev/null || ssh erebor.cs.loyola.edu -W %h:%p
+    ProxyCommand ssh -Y moria.cs.loyola.edu -W %h:%p 2>/dev/null || ssh -Y rivendell.cs.loyola.edu -W %h:%p 2>/dev/null || ssh -Y erebor.cs.loyola.edu -W %h:%p
     # The Proxy Command does the actual failover for logging in. If moria is down, it will fry rivendell, etc.
+    # the -Y in the ssh commands in the ProxyCommand line allow X11 forwarding through the jump hosts. You must
+    # also pass the -Y modifier to the box you are jumping to, so like ssh -Y lupin will forward X11, but ssh lupin will not.
